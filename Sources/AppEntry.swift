@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: 桌面面板
 
     private func setupPanel() {
-        let contentSize = NSSize(width: 300, height: 312)
+        let contentSize = NSSize(width: 300, height: 286)
 
         let hosting = NSHostingView(rootView: ContentView(model: model, state: state))
         hosting.frame = NSRect(origin: .zero, size: contentSize)
@@ -353,26 +353,31 @@ struct ContentView: View {
     private var stats: SystemStats { model.stats }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-
+            Spacer(minLength: 4)
             row(title: "CPU", symbol: "cpu", percent: stats.cpuPercent,
                 caption: String(format: "%.0f%%", stats.cpuPercent * 100),
                 color: .orange)
+            Spacer(minLength: 4)
             cpuSparkline
+            Spacer(minLength: 4)
             row(title: "内存", symbol: "memorychip", percent: stats.memoryPercent,
                 caption: String(format: "%.1f / %.1f GB", stats.memoryUsedGB, stats.memoryTotalGB),
                 color: .blue)
+            Spacer(minLength: 4)
             row(title: "存储", symbol: "internaldrive", percent: stats.diskPercent,
                 caption: String(format: "%.1f / %.1f GB", stats.diskUsedGB, stats.diskTotalGB),
                 color: .green)
+            Spacer(minLength: 4)
             batterySection
+            Spacer(minLength: 4)
             networkSection
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
             footer
         }
-        .padding(16)
-        .frame(width: 300, height: 312)
+        .padding(14)
+        .frame(width: 300, height: 286)
         .background {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(state.theme.backgroundColor)
@@ -541,7 +546,7 @@ struct ContentView: View {
             for p in points.dropFirst() { line.addLine(to: p) }
             context.stroke(line, with: .color(Color.orange.opacity(0.9)), lineWidth: 1.5)
         }
-        .frame(height: 44)
+        .frame(height: 36)
     }
 
     private var footer: some View {
