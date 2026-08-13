@@ -31,7 +31,7 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/zoryshan/macos-system-status-widget.git
+git clone https://github.com/zoryabc/macos-system-status-widget.git
 cd macos-system-status-widget
 ./build.sh
 open build/SystemWidget.app
