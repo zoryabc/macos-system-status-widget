@@ -1,6 +1,8 @@
 import Foundation
 import IOKit.ps
 import Darwin
+import SystemConfiguration
+import CoreWLAN
 
 // MARK: - 系统状态数据
 
@@ -20,6 +22,10 @@ struct SystemStats {
     var batteryPlugged = false
     var hasBattery = false
     var batteryMinutesRemaining: Int? = nil
+    var networkDownBps: UInt64 = 0
+    var networkUpBps: UInt64 = 0
+    var networkName = ""
+    var ipAddress = ""
 
     /// 纯文本摘要，供命令行验证使用
     var summary: String {
@@ -39,11 +45,15 @@ struct SystemStats {
         } else {
             batt = "none"
         }
+        let net = String(format: "↓ %.1f MB/s  ↑ %.1f MB/s",
+                         Double(networkDownBps) / 1_048_576,
+                         Double(networkUpBps) / 1_048_576)
         return """
         CPU:      \(String(format: "%.0f", cpuPercent * 100))%  (\(coreCount) cores, \(cpuBrand))
         Memory:   \(String(format: "%.0f", memoryPercent * 100))% used  (\(mem))
         Disk:     \(String(format: "%.0f", diskPercent * 100))% used  (\(disk))
         Battery:  \(batt)
+        Network:  \(net)  (\(networkName) · \(ipAddress))
         """
     }
 }
@@ -54,6 +64,10 @@ enum SystemStatsSampler {
     // CPU 负载需要前后两次采样做差值，这里保存上一次的计数器
     private static var lastBusy = [UInt64]()
     private static var lastTotal = [UInt64]()
+    // 网络速率同样需要前后两次采样
+    private static var lastNetIn: UInt64 = 0
+    private static var lastNetOut: UInt64 = 0
+    private static var lastNetSample: TimeInterval = 0
 
     static func sample() -> SystemStats {
         var s = SystemStats()
@@ -64,6 +78,7 @@ enum SystemStatsSampler {
         (s.diskUsedGB, s.diskTotalGB, s.diskPercent) = Self.diskUsage()
         (s.batteryPercent, s.batteryCharging, s.batteryPlugged, s.hasBattery,
          s.batteryMinutesRemaining) = Self.batteryInfo()
+        (s.networkDownBps, s.networkUpBps, s.networkName, s.ipAddress) = Self.networkInfo()
         return s
     }
 
@@ -241,5 +256,123 @@ enum SystemStatsSampler {
         var avg = [Double](repeating: 0, count: 3)
         getloadavg(&avg, 3)
         return (avg[0], avg[1], avg[2])
+    }
+
+    // MARK: 网络
+
+    static func networkInfo() -> (downBps: UInt64, upBps: UInt64, name: String, ip: String) {
+        let primary = primaryInterfaceName()
+
+        var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddrPtr) == 0, let first = ifaddrPtr else {
+            return (0, 0, "", "")
+        }
+        defer { freeifaddrs(ifaddrPtr) }
+
+        var chosen = ""
+        var fallback = ""
+        var ip = ""
+
+        // 第一遍：找主接口（或第一个可用的 en* 接口）的 IPv4 地址
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let ifa = cursor {
+            let name = String(cString: ifa.pointee.ifa_name)
+            let family = ifa.pointee.ifa_addr.pointee.sa_family
+            if family == sa_family_t(AF_INET),
+               name != "lo0",
+               !name.hasPrefix("awdl"),
+               !name.hasPrefix("llw"),
+               !name.hasPrefix("utun") {
+                if name == primary {
+                    chosen = name
+                    ip = ipString(from: ifa)
+                } else if fallback.isEmpty && chosen.isEmpty {
+                    fallback = name
+                    ip = ipString(from: ifa)
+                }
+            }
+            cursor = ifa.pointee.ifa_next
+        }
+        if chosen.isEmpty { chosen = fallback }
+
+        // 第二遍：读取该接口的流量计数器
+        var inBytes: UInt64 = 0
+        var outBytes: UInt64 = 0
+        var linkCursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let ifa = linkCursor {
+            let name = String(cString: ifa.pointee.ifa_name)
+            if name == chosen,
+               ifa.pointee.ifa_addr.pointee.sa_family == sa_family_t(AF_LINK),
+               let dataPtr = ifa.pointee.ifa_data {
+                let data = dataPtr.assumingMemoryBound(to: if_data.self).pointee
+                inBytes = UInt64(data.ifi_ibytes)
+                outBytes = UInt64(data.ifi_obytes)
+            }
+            linkCursor = ifa.pointee.ifa_next
+        }
+
+        // 计算速率
+        let now = ProcessInfo.processInfo.systemUptime
+        var down: UInt64 = 0
+        var up: UInt64 = 0
+        if lastNetSample > 0 {
+            let dt = now - lastNetSample
+            if dt > 0.1 {
+                down = UInt64(Double(deltaCounter(inBytes, lastNetIn)) / dt)
+                up = UInt64(Double(deltaCounter(outBytes, lastNetOut)) / dt)
+            }
+        }
+        lastNetIn = inBytes
+        lastNetOut = outBytes
+        lastNetSample = now
+
+        // 网络名称
+        let ssid = ssidName(interface: chosen)
+        let name: String
+        if !ssid.isEmpty {
+            name = "Wi-Fi · \(ssid)"
+        } else if chosen.hasPrefix("en") {
+            name = "以太网"
+        } else {
+            name = chosen
+        }
+
+        return (down, up, name, ip)
+    }
+
+    private static func primaryInterfaceName() -> String {
+        guard let store = SCDynamicStoreCreate(nil, "SystemWidget" as CFString, nil, nil),
+              let value = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString),
+              let dict = value as? [String: Any],
+              let name = dict["PrimaryInterface"] as? String
+        else {
+            return ""
+        }
+        return name
+    }
+
+    private static func ipString(from ifa: UnsafeMutablePointer<ifaddrs>) -> String {
+        var addr = ifa.pointee.ifa_addr.pointee
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let result = getnameinfo(&addr,
+                                 socklen_t(ifa.pointee.ifa_addr.pointee.sa_len),
+                                 &host,
+                                 socklen_t(host.count),
+                                 nil,
+                                 0,
+                                 NI_NUMERICHOST)
+        guard result == 0 else { return "" }
+        return String(cString: host)
+    }
+
+    private static func deltaCounter(_ current: UInt64, _ previous: UInt64) -> UInt64 {
+        if current >= previous { return current - previous }
+        // 处理 32 位计数器回绕
+        return current + 4_294_967_296 - previous
+    }
+
+    private static func ssidName(interface: String) -> String {
+        guard !interface.isEmpty else { return "" }
+        return CWWiFiClient.shared().interface(withName: interface)?.ssid() ?? ""
     }
 }

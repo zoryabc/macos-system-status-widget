@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: 桌面面板
 
     private func setupPanel() {
-        let contentSize = NSSize(width: 300, height: 286)
+        let contentSize = NSSize(width: 300, height: 312)
 
         let hosting = NSHostingView(rootView: ContentView(model: model, state: state))
         hosting.frame = NSRect(origin: .zero, size: contentSize)
@@ -353,18 +353,8 @@ struct ContentView: View {
     private var stats: SystemStats { model.stats }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             header
-
-            if state.editMode {
-                Text("编辑模式：按住卡片拖动位置，完成后从菜单栏锁定")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 3)
-                    .background(Color.accentColor.opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 6))
-            }
 
             row(title: "CPU", symbol: "cpu", percent: stats.cpuPercent,
                 caption: String(format: "%.0f%%", stats.cpuPercent * 100),
@@ -377,11 +367,12 @@ struct ContentView: View {
                 caption: String(format: "%.1f / %.1f GB", stats.diskUsedGB, stats.diskTotalGB),
                 color: .green)
             batterySection
+            networkSection
             Spacer(minLength: 6)
             footer
         }
         .padding(16)
-        .frame(width: 300, height: 286)
+        .frame(width: 300, height: 312)
         .background {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(state.theme.backgroundColor)
@@ -390,6 +381,17 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(state.editMode ? Color.accentColor : state.theme.borderColor,
                               lineWidth: state.editMode ? 1.5 : 0.8)
+        }
+        .overlay(alignment: .top) {
+            if state.editMode {
+                Text("编辑模式：按住拖动，菜单栏锁定")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.15), in: Capsule())
+                    .padding(.top, 8)
+            }
         }
     }
 
@@ -453,6 +455,58 @@ struct ContentView: View {
                     caption: "无电池", color: .secondary)
             }
         }
+    }
+
+    private var networkSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: networkSymbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 18)
+                Text("网络")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(state.theme.secondaryText)
+                Spacer(minLength: 8)
+                Text("↓ \(formatSpeed(stats.networkDownBps))   ↑ \(formatSpeed(stats.networkUpBps))")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(state.theme.primaryText)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 4) {
+                Text(networkStatusText)
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(state.theme.secondaryText)
+            .padding(.leading, 26)
+        }
+    }
+
+    private var networkSymbol: String {
+        stats.ipAddress.isEmpty ? "wifi.slash" : "wifi"
+    }
+
+    private var networkStatusText: String {
+        if !stats.networkName.isEmpty {
+            return "\(stats.networkName) · \(stats.ipAddress)"
+        }
+        if !stats.ipAddress.isEmpty {
+            return "IP \(stats.ipAddress)"
+        }
+        return "未连接网络"
+    }
+
+    private func formatSpeed(_ bps: UInt64) -> String {
+        let value = Double(bps)
+        if value >= 1_048_576 {
+            return String(format: "%.1f MB/s", value / 1_048_576)
+        }
+        if value >= 1024 {
+            return String(format: "%.0f KB/s", value / 1024)
+        }
+        return "\(bps) B/s"
     }
 
     private var cpuSparkline: some View {

@@ -17,6 +17,7 @@
 - CPU 最近 45 秒使用曲线（Activity Monitor 风格）
 - 负载均值（1/5/15 分钟）与系统运行时间
 - 电池剩余时间估算（放电/充电状态自动识别）
+- 实时网络速率（上下行）、网络名称与本机 IP
 - 「深色 / 浅色」两套外观预设，菜单栏一键切换，选择自动记忆
 - 「开机自启」开关，登录时自动启动
 - 点击穿透，不挡桌面操作；位置自动记忆
@@ -97,6 +98,7 @@ open build/SystemWidget.app
 | 内存 | `host_statistics64`（active + wired + compressed） |
 | 存储 | 根卷文件系统属性 |
 | 电池 | IOKit 电源管理（含剩余时间） |
+| 网络 | `getifaddrs` 流量计数器（速率）+ SystemConfiguration 主接口 + CoreWLAN SSID |
 | 负载 / 运行时间 | `getloadavg` / `kern.boottime` |
 
 ## 常见问题
