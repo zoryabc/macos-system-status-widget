@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# 构建产物
+build/
+*.app
+*.zip
+*.dmg
+
+# Xcode / SwiftPM
+xcuserdata/
+DerivedData/
+.swiftpm/
+.build/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp

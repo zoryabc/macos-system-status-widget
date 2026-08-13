@@ -1,0 +1,22 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build app and CLI
+        run: ./build.sh
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SystemWidget.app
+          path: build/SystemWidget.app
