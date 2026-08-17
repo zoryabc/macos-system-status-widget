@@ -194,7 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.isReleasedWhenClosed = false
         p.hidesOnDeactivate = false
         p.delegate = self
-        p.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        // stationary：不受 Mission Control /「点击墙纸显示桌面」影响，点击桌面空白处时
+        // 其他窗口被收起，小组件仍留在桌面，方便随时查看系统信息。
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
         panel = p
 
