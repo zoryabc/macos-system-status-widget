@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.ps
+import IOKit
 import Darwin
 import SystemConfiguration
 import CoreWLAN
@@ -22,6 +23,7 @@ struct SystemStats {
     var batteryPlugged = false
     var hasBattery = false
     var batteryMinutesRemaining: Int? = nil
+    var batteryPowerWatts: Double? = nil
     var networkDownBps: UInt64 = 0
     var networkUpBps: UInt64 = 0
     var networkName = ""
@@ -33,13 +35,21 @@ struct SystemStats {
         let disk = String(format: "%.1f / %.1f GB", diskUsedGB, diskTotalGB)
         let batt: String
         if let p = batteryPercent {
-            let suffix: String
+            var suffix: String
             if batteryCharging {
                 suffix = "charging"
             } else if let m = batteryMinutesRemaining {
                 suffix = "\(m)min left"
             } else {
                 suffix = batteryPlugged ? "AC" : "battery"
+            }
+            if let w = batteryPowerWatts, w != 0 {
+                let power = String(format: "%.0fW", abs(w))
+                if batteryCharging {
+                    suffix += " \(power)"
+                } else if !batteryPlugged {
+                    suffix += " discharging \(power)"
+                }
             }
             batt = String(format: "%.0f%% (%@)", p * 100, suffix)
         } else {
@@ -77,7 +87,7 @@ enum SystemStatsSampler {
         (s.memoryUsedGB, s.memoryTotalGB, s.memoryPercent) = Self.memoryUsage()
         (s.diskUsedGB, s.diskTotalGB, s.diskPercent) = Self.diskUsage()
         (s.batteryPercent, s.batteryCharging, s.batteryPlugged, s.hasBattery,
-         s.batteryMinutesRemaining) = Self.batteryInfo()
+         s.batteryMinutesRemaining, s.batteryPowerWatts) = Self.batteryInfo()
         (s.networkDownBps, s.networkUpBps, s.networkName, s.ipAddress) = Self.networkInfo()
         return s
     }
@@ -196,11 +206,11 @@ enum SystemStatsSampler {
 
     // MARK: 电池
 
-    static func batteryInfo() -> (Double?, Bool, Bool, Bool, Int?) {
+    static func batteryInfo() -> (Double?, Bool, Bool, Bool, Int?, Double?) {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
         else {
-            return (nil, false, false, false, nil)
+            return (nil, false, false, false, nil, nil)
         }
 
         let currentKey = kIOPSCurrentCapacityKey as String
@@ -210,6 +220,11 @@ enum SystemStatsSampler {
         let stateKey = kIOPSPowerSourceStateKey as String
         let acValue = kIOPSACPowerValue as String
         let timeKey = "TimeRemaining"
+        let voltageKey = kIOPSVoltageKey as String
+        // IOKit.ps 没有公开 Amperage 常量，且 Apple Silicon 上该字典也没有 Voltage，
+        // 因此电流键用字面量兼容 "Amperage"/"Current" 两种写法，电压缺失时回退到 IORegistry。
+        let amperageKey = "Amperage"
+        let currentMAKey = "Current"
 
         for source in sources {
             guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?
@@ -228,9 +243,39 @@ enum SystemStatsSampler {
             if let seconds = desc[timeKey] as? Double, seconds > 0 {
                 minutes = max(1, Int(seconds / 60))
             }
-            return (level, charging, plugged, true, minutes)
+            // 功率 = 电压(mV) × 电流(mA) / 1_000_000，正值充电、负值放电
+            var powerWatts: Double? = nil
+            let amperage = (desc[amperageKey] as? NSNumber)?.doubleValue
+                ?? (desc[currentMAKey] as? NSNumber)?.doubleValue
+            let voltage = (desc[voltageKey] as? NSNumber)?.doubleValue
+                ?? Self.batteryVoltageMillivolts().map(Double.init)
+            if let voltage, let amperage {
+                powerWatts = voltage * amperage / 1_000_000
+            }
+            return (level, charging, plugged, true, minutes, powerWatts)
         }
-        return (nil, false, false, false, nil)
+        return (nil, false, false, false, nil, nil)
+    }
+
+    /// 从 IORegistry 的 AppleSmartBattery 读取当前电池电压（mV）。
+    /// IOKit 电源字典在 Apple Silicon 上不提供 Voltage，需要从电池服务兜底读取。
+    private static func batteryVoltageMillivolts() -> Int? {
+        guard let matching = IOServiceMatching("AppleSmartBattery") else { return nil }
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS
+        else { return nil }
+        defer { IOObjectRelease(iterator) }
+
+        let service = IOIteratorNext(iterator)
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+
+        guard let property = IORegistryEntryCreateCFProperty(
+            service, "Voltage" as CFString, kCFAllocatorDefault, 0
+        )?.takeRetainedValue() as? NSNumber else {
+            return nil
+        }
+        return property.intValue
     }
 
     // MARK: 运行时间

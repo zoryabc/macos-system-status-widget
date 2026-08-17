@@ -441,7 +441,8 @@ struct ContentView: View {
                             .minimumScaleFactor(0.85)
                             .frame(width: 100, alignment: .trailing)
                     }
-                    if stats.batteryCharging || stats.batteryPlugged || stats.batteryMinutesRemaining != nil {
+                    if stats.batteryCharging || stats.batteryPlugged
+                        || stats.batteryMinutesRemaining != nil || stats.batteryPowerWatts != nil {
                         HStack(spacing: 4) {
                             Image(systemName: batteryStatusSymbol)
                                 .font(.system(size: 9, weight: .semibold))
@@ -572,13 +573,32 @@ struct ContentView: View {
     }
 
     private var batteryStatusText: String {
-        if stats.batteryCharging { return "正在充电" }
+        if stats.batteryCharging {
+            if let w = stats.batteryPowerWatts, w != 0 {
+                return "正在充电 · \(formatPower(w))"
+            }
+            return "正在充电"
+        }
         if stats.batteryPlugged { return "电源供电" }
         if let m = stats.batteryMinutesRemaining {
-            if m >= 60 { return "剩余约 \(m / 60)小时\(m % 60)分" }
-            return "剩余约 \(m)分钟"
+            let remaining = m >= 60 ? "剩余约 \(m / 60)小时\(m % 60)分" : "剩余约 \(m)分钟"
+            if let w = stats.batteryPowerWatts, w != 0 {
+                return "\(remaining) · 放电 \(formatPower(w))"
+            }
+            return remaining
+        }
+        if let w = stats.batteryPowerWatts, w != 0 {
+            return "电池供电 · 放电 \(formatPower(w))"
         }
         return "电池供电"
+    }
+
+    private func formatPower(_ watts: Double) -> String {
+        let value = abs(watts)
+        if value >= 100 {
+            return String(format: "%.0f W", value)
+        }
+        return String(format: "%.1f W", value)
     }
 
     private func row(title: String, symbol: String, percent: Double,
