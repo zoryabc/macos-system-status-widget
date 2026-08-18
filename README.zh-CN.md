@@ -10,6 +10,10 @@
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+## 下载
+
+可以在 [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) 页面下载打包好的版本，无需本地构建：下载 zip、解压后直接打开 `SystemWidget.app` 即可。
+
 > 为什么不用系统自带的 WidgetKit？
 >
 > WidgetKit 小组件无法高频刷新（通常十几分钟才更新一次），不适合实时监控。

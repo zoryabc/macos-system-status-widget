@@ -91,6 +91,7 @@ final class SystemStatsModel: ObservableObject {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
+    private var statusItemRetryCount = 0
     private var panel: NSPanel?
     private let model = SystemStatsModel()
     private let state = AppState()
@@ -117,11 +118,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: 菜单栏
 
     private func setupStatusItem() {
+        // 重试场景：先移除可能残留的旧状态项
+        if let old = statusItem {
+            NSStatusBar.system.removeStatusItem(old)
+            statusItem = nil
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.autosaveName = "SystemWidgetStatusItem"
+        item.isVisible = true
+
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent",
-                                   accessibilityDescription: "系统状态小组件")
+            button.image = Self.makeStatusBarIcon()
             button.image?.isTemplate = true
+            button.imagePosition = .imageOnly
+            button.toolTip = "SystemWidget"
         }
 
         let menu = NSMenu()
@@ -170,6 +181,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         item.menu = menu
         statusItem = item
+
+        // 开机自启等场景下，启动瞬间系统菜单栏可能尚未就绪，按钮可能为 nil。
+        // 稍后重试，确保仪表盘图标一定出现、菜单可用。
+        if item.button == nil, statusItemRetryCount < 10 {
+            statusItemRetryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.setupStatusItem()
+            }
+        }
+    }
+
+    /// 生成菜单栏图标；SF Symbol 不可用时回退到系统内置符号，最后用绘制兜底，
+    /// 保证任何系统环境下都有可见图标。
+    private static func makeStatusBarIcon() -> NSImage {
+        if let symbol = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent",
+                                accessibilityDescription: "SystemWidget") {
+            return symbol
+        }
+        if let symbol = NSImage(systemSymbolName: "gauge",
+                                accessibilityDescription: "SystemWidget") {
+            return symbol
+        }
+        return Self.drawFallbackIcon()
+    }
+
+    private static func drawFallbackIcon() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        let circleRect = NSRect(x: 1.5, y: 1.5, width: 15, height: 15)
+        let circle = NSBezierPath(ovalIn: circleRect)
+        circle.lineWidth = 2
+        NSColor.black.setStroke()
+        circle.stroke()
+
+        let needle = NSBezierPath()
+        needle.move(to: NSPoint(x: 9, y: 9))
+        needle.line(to: NSPoint(x: 14, y: 4.5))
+        needle.lineWidth = 2
+        needle.lineCapStyle = .round
+        needle.stroke()
+
+        NSColor.black.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 7.5, y: 7.5, width: 3, height: 3)).fill()
+
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 
     // MARK: 桌面面板

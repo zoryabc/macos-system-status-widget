@@ -10,6 +10,10 @@ A real-time macOS desktop widget that shows CPU, memory, disk, battery, and netw
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+## Download
+
+Prebuilt releases are available on the [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) page — no build required. Download the zip, unzip it, and open `SystemWidget.app`.
+
 > Why not use the built-in WidgetKit?
 >
 > WidgetKit widgets cannot refresh frequently (usually only once every dozen or so minutes), which makes them unsuitable for real-time monitoring. This project uses a borderless floating window instead, so it can show real data refreshed every second.

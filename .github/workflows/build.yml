@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -15,8 +16,21 @@ jobs:
       - name: Build app and CLI
         run: ./build.sh
 
+      - name: Package app
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/SystemWidget.app "dist/SystemWidget-${GITHUB_REF_NAME}.zip"
+
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: SystemWidget.app
           path: build/SystemWidget.app
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/SystemWidget-${GITHUB_REF_NAME}.zip" --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" "dist/SystemWidget-${GITHUB_REF_NAME}.zip" --clobber
