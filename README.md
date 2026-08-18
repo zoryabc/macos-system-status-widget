@@ -12,7 +12,7 @@ A real-time macOS desktop widget that shows CPU, memory, disk, battery, and netw
 
 ## Download
 
-Prebuilt releases are available on the [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) page — no build required. Download the zip, unzip it, and open `SystemWidget.app`.
+Prebuilt releases are available on the [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) page — no build required. Download the `.dmg`, double-click to open it, then drag `SystemWidget.app` into the Applications folder. A `.zip` version is also available.
 
 > Why not use the built-in WidgetKit?
 >

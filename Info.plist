@@ -6,6 +6,8 @@
     <string>SystemWidget</string>
     <key>CFBundleDisplayName</key>
     <string>系统状态小组件</string>
+    <key>CFBundleIconFile</key>
+    <string>SystemWidget</string>
     <key>CFBundleIdentifier</key>
     <string>local.zoryshan.systemwidget</string>
     <key>CFBundleVersion</key>

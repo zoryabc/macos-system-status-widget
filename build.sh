@@ -17,6 +17,7 @@ xcrun swiftc -O -parse-as-library \
   -o "$APP_DIR/Contents/MacOS/SystemWidget"
 
 cp Info.plist "$APP_DIR/Contents/Info.plist"
+cp assets/SystemWidget.icns "$APP_DIR/Contents/Resources/SystemWidget.icns"
 codesign --force --deep --sign - "$APP_DIR"
 
 echo "==> 构建命令行验证工具 statscli ..."

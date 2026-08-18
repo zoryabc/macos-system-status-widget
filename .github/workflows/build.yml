@@ -21,6 +21,10 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent build/SystemWidget.app "dist/SystemWidget-${GITHUB_REF_NAME}.zip"
 
+      - name: Build DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/make-dmg.sh "${GITHUB_REF_NAME#v}"
+
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
@@ -32,5 +36,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "dist/SystemWidget-${GITHUB_REF_NAME}.zip" --generate-notes \
-            || gh release upload "$GITHUB_REF_NAME" "dist/SystemWidget-${GITHUB_REF_NAME}.zip" --clobber
+          gh release create "$GITHUB_REF_NAME" \
+              "dist/SystemWidget-${GITHUB_REF_NAME}.zip" \
+              "dist/SystemWidget-${GITHUB_REF_NAME#v}.dmg" \
+              --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" \
+              "dist/SystemWidget-${GITHUB_REF_NAME}.zip" \
+              "dist/SystemWidget-${GITHUB_REF_NAME#v}.dmg" --clobber

@@ -12,7 +12,7 @@
 
 ## 下载
 
-可以在 [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) 页面下载打包好的版本，无需本地构建：下载 zip、解压后直接打开 `SystemWidget.app` 即可。
+可以在 [Releases](https://github.com/zoryabc/macos-system-status-widget/releases) 页面下载打包好的版本，无需本地构建：下载 `.dmg` 后双击打开，把 `SystemWidget.app` 拖入 Applications 文件夹即可完成安装；也提供 `.zip` 版本。
 
 > 为什么不用系统自带的 WidgetKit？
 >
