@@ -7,8 +7,17 @@
 一款运行在 macOS 桌面上的实时系统监控小组件：CPU、内存、存储、电池，每秒刷新，一目了然。
 
 ![macOS](https://img.shields.io/badge/macOS-15%2B-333333?logo=apple&logoColor=white)
+![Liquid Glass](https://img.shields.io/badge/Liquid%20Glass-macOS%2026%2B-0A84FF)
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+## 液态玻璃外观
+
+卡片采用 macOS 26 起的 **Liquid Glass** 材质：桌面壁纸会透过卡片被真实折射、扩散，再叠上 macOS 27 收紧的边缘处理——更亮的镜面高光、更暗的收边描边，以及随系统深浅色切换的染色强度。
+
+- 系统为 macOS 26 及以上时，走真正的 `glassEffect` 玻璃；更早的系统自动退回毛玻璃材质，界面与数据完全一致。
+- 玻璃材质的染色强度按深浅色分别调过，保证在花哨壁纸前文字依然清楚。
+- 卡片本身尺寸保持不变（300 × 286），内容与布局与升级前完全一致。
 
 ## 下载
 
@@ -26,16 +35,17 @@
 - 负载均值（1/5/15 分钟）与系统运行时间
 - 电池剩余时间估算与充放电功率显示（放电/充电状态自动识别）
 - 实时网络速率（上下行）、网络名称与本机 IP
-- 「深色 / 浅色」两套外观预设，菜单栏一键切换，选择自动记忆
+- 液态玻璃卡片，跟随系统深浅色；也可手动锁定深色 / 浅色玻璃，选择自动记忆
+- 胶囊仪表条，数值变化平滑过渡（不再是系统默认进度条）
 - 「开机自启」开关，登录时自动启动
 - 点击穿透，不挡桌面操作；位置自动记忆
 - 纯本地应用，无任何网络请求，数据全部来自本机
 
 ## 环境要求
 
-- macOS 15.0 或更高版本
+- macOS 15.0 或更高版本（macOS 26 起启用液态玻璃，更早系统自动退回毛玻璃）
 - Apple Silicon（M 系列）或 Intel Mac
-- 构建需要 Xcode 或 Command Line Tools（`xcode-select --install`）
+- 构建需要 Xcode 26 或更高版本（用到 Liquid Glass 的 SDK；运行时仍兼容 macOS 15）
 
 ## 快速开始
 
@@ -58,7 +68,7 @@ open build/SystemWidget.app
 2. 点击菜单栏的仪表盘图标：
    - **移动位置（编辑模式）**：卡片浮动并显示提示，按住拖动调整位置，再点一次恢复锁定。
    - **始终置顶**：让卡片浮在所有窗口之上。
-   - **外观预设**：切换深色 / 浅色主题，选择自动记忆。
+   - **外观预设**：跟随系统 / 深色玻璃 / 浅色玻璃，选择自动记忆。
    - **开机自启**：勾选后登录时自动启动，取消即移除注册。
    - **退出**：退出小组件。
 3. 锁定状态下点击穿透卡片，不影响桌面操作；位置会自动记住。
@@ -116,7 +126,8 @@ open build/SystemWidget.app
 - **如何关闭开机自启**：菜单栏取消「开机自启」，或删除
   `~/Library/LaunchAgents/local.systemwidget.plist`。
 - **想调整透明度或外观**：外观在菜单栏「外观预设」中切换；
-  具体数值可直接修改 `Sources/AppEntry.swift` 后重新构建。
+  玻璃染色深浅在 `Sources/AppEntry.swift` 的 `WidgetPalette.glassTint` 调整，
+  卡片圆角在 `WidgetMetrics.cardRadius` 调整。
 
 ## 许可证
 

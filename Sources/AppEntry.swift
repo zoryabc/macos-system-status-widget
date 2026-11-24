@@ -11,36 +11,98 @@ struct SystemWidgetApp: App {
     }
 }
 
-// MARK: - 共享状态
+// MARK: - 尺寸
+
+enum WidgetMetrics {
+    /// 卡片可见尺寸。内容与升级前保持一致（300 × 286）。
+    static let cardSize = CGSize(width: 300, height: 286)
+    /// 卡片外留白，用来容纳投影，避免被窗口边缘裁切
+    static let shadowInset: CGFloat = 18
+    /// 窗口整体尺寸 = 卡片 + 四周留白
+    static var windowSize: CGSize {
+        CGSize(width: cardSize.width + shadowInset * 2,
+               height: cardSize.height + shadowInset * 2)
+    }
+    /// 圆角半径，对齐 macOS 27 收紧后的窗口圆角
+    static let cardRadius: CGFloat = 24
+}
+
+// MARK: - 外观
 
 enum WidgetTheme: String, CaseIterable {
+    case auto
     case dark
     case light
 
     var displayName: String {
         switch self {
-        case .dark: return "深色"
-        case .light: return "浅色"
+        case .auto: return "跟随系统"
+        case .dark: return "深色玻璃"
+        case .light: return "浅色玻璃"
         }
     }
 
-    var backgroundColor: Color {
+    /// 自动档交给系统决定深浅；其余两档锁定窗口外观，玻璃与文字同步切换
+    var appearance: NSAppearance? {
         switch self {
-        case .dark: return Color(red: 0.11, green: 0.11, blue: 0.13)   // #1C1C1E
-        case .light: return Color(red: 0.95, green: 0.95, blue: 0.97)  // #F2F2F7
+        case .auto: return nil
+        case .dark: return NSAppearance(named: .darkAqua)
+        case .light: return NSAppearance(named: .aqua)
         }
+    }
+
+    func palette(for scheme: ColorScheme) -> WidgetPalette {
+        let isDark: Bool
+        switch self {
+        case .auto: isDark = (scheme == .dark)
+        case .dark: isDark = true
+        case .light: isDark = false
+        }
+        return WidgetPalette(isDark: isDark)
+    }
+}
+
+/// 液态玻璃用色。玻璃本身负责折射，这里只补充「染色 + 文字 + 边缘」三组颜色，
+/// 保证任何壁纸上都读得清。
+struct WidgetPalette {
+    let isDark: Bool
+
+    /// 玻璃染色。macOS 27 的液态玻璃可从未着色到完全染色，
+    /// 桌面小组件需要一定染色才能在复杂壁纸前保持可读性。
+    var glassTint: Color {
+        isDark ? Color.black.opacity(0.55) : Color.white.opacity(0.46)
     }
 
     var primaryText: Color {
-        self == .dark ? .white : .black
+        isDark ? Color.white.opacity(0.97) : Color.black.opacity(0.90)
     }
 
     var secondaryText: Color {
-        self == .dark ? Color.white.opacity(0.62) : Color.black.opacity(0.55)
+        isDark ? Color.white.opacity(0.66) : Color.black.opacity(0.56)
     }
 
-    var borderColor: Color {
-        self == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.10)
+    /// 进度条底槽
+    var track: Color {
+        isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.10)
+    }
+
+    /// 边缘：顶部高光
+    var rimHighlight: Color {
+        isDark ? Color.white.opacity(0.55) : Color.white.opacity(0.90)
+    }
+
+    /// 边缘：底部暗边，用来和背景分离
+    var rimShadow: Color {
+        isDark ? Color.black.opacity(0.34) : Color.black.opacity(0.14)
+    }
+
+    /// 顶部的柔和内反光，模拟玻璃表面的镜面感
+    var topSheen: Color {
+        isDark ? Color.white.opacity(0.10) : Color.white.opacity(0.26)
+    }
+
+    var shadow: Color {
+        isDark ? Color.black.opacity(0.45) : Color.black.opacity(0.20)
     }
 }
 
@@ -50,16 +112,23 @@ final class AppState: ObservableObject {
     @Published var theme: WidgetTheme {
         didSet {
             UserDefaults.standard.set(theme.rawValue, forKey: "SystemWidgetTheme")
+            onThemeChange?(theme)
         }
     }
 
+    /// 主题变化时同步窗口外观（玻璃材质跟着系统深浅色走）
+    var onThemeChange: ((WidgetTheme) -> Void)?
+
     init() {
         let saved = UserDefaults.standard.string(forKey: "SystemWidgetTheme") ?? ""
-        // 兼容旧的 纯黑/纯白 设置
-        if saved == "white" {
+        switch saved {
+        case "white":
+            // 兼容更早版本的 纯白 设置
             theme = .light
-        } else {
-            theme = WidgetTheme(rawValue: saved) ?? .dark
+        case "dark", "light":
+            theme = WidgetTheme(rawValue: saved) ?? .auto
+        default:
+            theme = .auto
         }
     }
 }
@@ -95,7 +164,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: NSPanel?
     private let model = SystemStatsModel()
     private let state = AppState()
-    private let frameKey = "SystemWidgetPanelFrame"
+    private let frameKey = "SystemWidgetPanelFrameV2"
+    private let legacyFrameKey = "SystemWidgetPanelFrame"
 
     private var launchAgentURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -106,10 +176,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        NSApp.appearance = NSAppearance(named: .aqua)
+        NSApp.appearance = state.theme.appearance
         // 调试/测试用：启动即置顶，便于确认渲染
         if CommandLine.arguments.contains("--always-on-top") {
             state.alwaysOnTop = true
+        }
+        state.onThemeChange = { [weak self] theme in
+            self?.panel?.appearance = theme.appearance
         }
         setupStatusItem()
         setupPanel()
@@ -235,21 +308,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: 桌面面板
 
     private func setupPanel() {
-        let contentSize = NSSize(width: 300, height: 286)
+        let windowSize = WidgetMetrics.windowSize
 
         let hosting = NSHostingView(rootView: ContentView(model: model, state: state))
-        hosting.frame = NSRect(origin: .zero, size: contentSize)
+        hosting.frame = NSRect(origin: .zero, size: windowSize)
         hosting.autoresizingMask = [.width, .height]
 
-        let p = NSPanel(contentRect: NSRect(origin: .zero, size: contentSize),
+        let p = NSPanel(contentRect: NSRect(origin: .zero, size: windowSize),
                         styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered,
                         defer: false)
         p.contentView = hosting
         p.isOpaque = false
         p.backgroundColor = .clear
+        // 投影由卡片自己绘制（更贴合玻璃的柔和光晕），窗口层不再叠一层系统阴影
         p.hasShadow = false
-        p.appearance = NSAppearance(named: .aqua)
+        p.appearance = state.theme.appearance
         p.isMovableByWindowBackground = true
         p.isReleasedWhenClosed = false
         p.hidesOnDeactivate = false
@@ -260,39 +334,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         panel = p
 
-        if let saved = UserDefaults.standard.string(forKey: frameKey) {
-            let savedRect = NSRectFromString(saved)
-            if !savedRect.isNull, let screen = mainScreen {
-                let vf = screen.visibleFrame
-                var frame = p.frame
-                frame.origin = savedRect.origin
-                // 卡片尺寸变化后，保证整个卡片仍然落在屏幕内
-                if frame.minY < vf.minY { frame.origin.y = vf.minY }
-                if frame.maxY > vf.maxY { frame.origin.y = vf.maxY - frame.height }
-                if frame.minX < vf.minX { frame.origin.x = vf.minX }
-                if frame.maxX > vf.maxX { frame.origin.x = vf.maxX - frame.width }
-                if vf.intersects(frame) {
-                    p.setFrame(frame, display: true)
-                } else {
-                    placeAtDefault(p)
-                }
-            } else {
-                placeAtDefault(p)
-            }
-        } else {
-            placeAtDefault(p)
-        }
-
+        restoreFrame(for: p)
         applyPanelMode()
         p.orderFrontRegardless()
     }
 
+    /// 恢复上次位置。卡片现在带了一圈投影留白，旧版本保存的是「卡片本身」的窗口位置，
+    /// 这里做一次换算，让升级后卡片在屏幕上原地不动。
+    private func restoreFrame(for p: NSPanel) {
+        let defaults = UserDefaults.standard
+        var cardOrigin: NSPoint?
+
+        if let saved = defaults.string(forKey: frameKey) {
+            let rect = NSRectFromString(saved)
+            if !rect.isNull { cardOrigin = NSPoint(x: rect.minX + WidgetMetrics.shadowInset,
+                                                  y: rect.minY + WidgetMetrics.shadowInset) }
+        } else if let legacy = defaults.string(forKey: legacyFrameKey) {
+            let rect = NSRectFromString(legacy)
+            if !rect.isNull { cardOrigin = rect.origin }
+        }
+
+        guard let origin = cardOrigin, let screen = mainScreen else {
+            placeAtDefault(p)
+            return
+        }
+
+        let visible = screen.visibleFrame
+        var frame = p.frame
+        frame.origin = NSPoint(x: origin.x - WidgetMetrics.shadowInset,
+                               y: origin.y - WidgetMetrics.shadowInset)
+
+        // 卡片尺寸或屏幕变化后，保证整张卡片仍然落在屏幕内
+        if frame.minY < visible.minY { frame.origin.y = visible.minY }
+        if frame.maxY > visible.maxY { frame.origin.y = visible.maxY - frame.height }
+        if frame.minX < visible.minX { frame.origin.x = visible.minX }
+        if frame.maxX > visible.maxX { frame.origin.x = visible.maxX - frame.width }
+
+        if visible.intersects(frame) {
+            p.setFrame(frame, display: true)
+        } else {
+            placeAtDefault(p)
+        }
+    }
+
     private func placeAtDefault(_ p: NSPanel) {
         guard let screen = mainScreen else { return }
-        let vf = screen.visibleFrame
-        let size = p.frame.size
-        p.setFrameOrigin(NSPoint(x: vf.maxX - size.width - 20,
-                                 y: vf.maxY - size.height - 20))
+        let visible = screen.visibleFrame
+        let card = WidgetMetrics.cardSize
+        let inset = WidgetMetrics.shadowInset
+        p.setFrameOrigin(NSPoint(x: visible.maxX - card.width - 20 - inset,
+                                 y: visible.maxY - card.height - 20 - inset))
     }
 
     /// 锁定状态：桌面层级 + 点击穿透；编辑/置顶：浮动层级
@@ -411,8 +502,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 struct ContentView: View {
     @ObservedObject var model: SystemStatsModel
     @ObservedObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
 
     private var stats: SystemStats { model.stats }
+    private var palette: WidgetPalette { state.theme.palette(for: colorScheme) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -439,41 +532,43 @@ struct ContentView: View {
             footer
         }
         .padding(14)
-        .frame(width: 300, height: 286)
+        .frame(width: WidgetMetrics.cardSize.width, height: WidgetMetrics.cardSize.height)
         .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(state.theme.backgroundColor)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(state.editMode ? Color.accentColor : state.theme.borderColor,
-                              lineWidth: state.editMode ? 1.5 : 0.8)
+            WidgetCardBackground(palette: palette, isEditing: state.editMode)
         }
         .overlay(alignment: .top) {
             if state.editMode {
-                Text("编辑模式：按住拖动，菜单栏锁定")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                    .padding(.top, 8)
+                editHint
             }
         }
+        .padding(WidgetMetrics.shadowInset)
+        .frame(width: WidgetMetrics.windowSize.width, height: WidgetMetrics.windowSize.height)
+    }
+
+    private var editHint: some View {
+        Text("编辑模式：按住拖动，菜单栏锁定")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.92), in: Capsule(style: .continuous))
+            .shadow(color: .black.opacity(0.22), radius: 4, y: 1)
+            .padding(.top, 8)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
             Image(systemName: "gauge.with.dots.needle.67percent")
                 .font(.system(size: 16, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.tint)
             Text("系统状态")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(state.theme.primaryText)
+                .foregroundStyle(palette.primaryText)
             Spacer(minLength: 4)
             Text("\(stats.cpuBrand) · \(stats.coreCount)核")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(state.theme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .lineLimit(1)
         }
     }
@@ -485,20 +580,18 @@ struct ContentView: View {
                     HStack(spacing: 8) {
                         Image(systemName: batterySymbol(level: level, charging: stats.batteryCharging))
                             .font(.system(size: 13, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.green)
                             .frame(width: 18)
                         Text("电池")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(state.theme.secondaryText)
+                            .foregroundStyle(palette.secondaryText)
                         Spacer(minLength: 8)
-                        ProgressView(value: level)
-                            .progressViewStyle(.linear)
-                            .tint(.green)
-                            .frame(width: 56)
+                        MeterBar(value: level, tint: .green, track: palette.track)
                         Text(String(format: "%.0f%%", level * 100))
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
-                            .foregroundStyle(state.theme.primaryText)
+                            .foregroundStyle(palette.primaryText)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
                             .frame(width: 100, alignment: .trailing)
@@ -530,16 +623,17 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 Image(systemName: networkSymbol)
                     .font(.system(size: 13, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.blue)
                     .frame(width: 18)
                 Text("网络")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(state.theme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
                 Spacer(minLength: 8)
                 Text("↓ \(formatSpeed(stats.networkDownBps))   ↑ \(formatSpeed(stats.networkUpBps))")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(state.theme.primaryText)
+                    .foregroundStyle(palette.primaryText)
                     .lineLimit(1)
             }
             HStack(spacing: 4) {
@@ -547,7 +641,7 @@ struct ContentView: View {
                     .font(.system(size: 10, weight: .medium))
                     .lineLimit(1)
             }
-            .foregroundStyle(state.theme.secondaryText)
+            .foregroundStyle(palette.secondaryText)
             .padding(.leading, 26)
         }
     }
@@ -598,7 +692,7 @@ struct ContentView: View {
             context.fill(
                 area,
                 with: .linearGradient(
-                    Gradient(colors: [Color.orange.opacity(0.38), Color.orange.opacity(0.02)]),
+                    Gradient(colors: [Color.orange.opacity(0.40), Color.orange.opacity(0.02)]),
                     startPoint: CGPoint(x: 0, y: 0),
                     endPoint: CGPoint(x: 0, y: size.height)
                 )
@@ -607,9 +701,18 @@ struct ContentView: View {
             var line = Path()
             line.move(to: first)
             for p in points.dropFirst() { line.addLine(to: p) }
-            context.stroke(line, with: .color(Color.orange.opacity(0.9)), lineWidth: 1.5)
+            context.stroke(
+                line,
+                with: .linearGradient(
+                    Gradient(colors: [Color.orange, Color.orange.opacity(0.75)]),
+                    startPoint: CGPoint(x: 0, y: 0),
+                    endPoint: CGPoint(x: size.width, y: 0)
+                ),
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+            )
         }
         .frame(height: 36)
+        .padding(.horizontal, 3)
     }
 
     private var footer: some View {
@@ -618,12 +721,12 @@ struct ContentView: View {
             Text(String(format: "负载 %.1f · %.1f · %.1f", load.0, load.1, load.2))
                 .font(.system(size: 10, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(state.theme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .help("过去 1、5、15 分钟的系统负载均值")
             Spacer(minLength: 4)
             Text(SystemStatsSampler.uptimeText())
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(state.theme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .lineLimit(1)
         }
     }
@@ -668,20 +771,18 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(color)
                 .frame(width: 18)
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(state.theme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
             Spacer(minLength: 8)
-            ProgressView(value: percent)
-                .progressViewStyle(.linear)
-                .tint(color)
-                .frame(width: 56)
+            MeterBar(value: percent, tint: color, track: palette.track)
             Text(caption)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(state.theme.primaryText)
+                .foregroundStyle(palette.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .frame(width: 100, alignment: .trailing)
@@ -697,5 +798,94 @@ struct ContentView: View {
         default: return "battery.100percent"
         }
     }
+}
 
+// MARK: - 玻璃组件
+
+/// 卡片底板：液态玻璃 + macOS 27 的边缘处理（更亮的镜面高光 + 更暗的描边），
+/// 再补一层柔和投影把卡片从壁纸上托起来。
+struct WidgetCardBackground: View {
+    let palette: WidgetPalette
+    let isEditing: Bool
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: WidgetMetrics.cardRadius, style: .continuous)
+    }
+
+    var body: some View {
+        glass
+            .overlay { rim }
+            .overlay {
+                if isEditing {
+                    shape.strokeBorder(Color.accentColor.opacity(0.9), lineWidth: 1.5)
+                }
+            }
+            .shadow(color: palette.shadow, radius: 12, x: 0, y: 5)
+    }
+
+    @ViewBuilder
+    private var glass: some View {
+        if #available(macOS 26.0, *) {
+            // 真正的液态玻璃：由系统负责背景折射、染色与无障碍适配
+            Color.clear
+                .glassEffect(.regular.tint(palette.glassTint), in: shape)
+        } else {
+            // macOS 26 以下：退回毛玻璃材质，视觉尽量接近
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay { shape.fill(palette.glassTint) }
+        }
+    }
+
+    private var rim: some View {
+        ZStack {
+            // 单一描边：左上偏亮（镜面高光）、右下偏暗（macOS 27 的暗边），
+            // 用角度渐变一次画完，避免出现「双线」轮廓
+            shape.strokeBorder(
+                LinearGradient(stops: [
+                    .init(color: palette.rimHighlight, location: 0.0),
+                    .init(color: Color.white.opacity(palette.isDark ? 0.14 : 0.38), location: 0.30),
+                    .init(color: Color.white.opacity(0.02), location: 0.58),
+                    .init(color: palette.rimShadow, location: 1.0),
+                ], startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: 1
+            )
+            // 顶部内侧柔光，让玻璃有厚度
+            shape
+                .fill(
+                    LinearGradient(colors: [palette.topSheen, .clear],
+                                   startPoint: .top, endPoint: .center)
+                )
+                .blur(radius: 6)
+                .clipShape(shape)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// 胶囊进度条：玻璃风格下的细长仪表，数值变化时平滑过渡
+struct MeterBar: View {
+    let value: Double
+    let tint: Color
+    let track: Color
+
+    private var clamped: Double { min(1, max(0, value)) }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(track)
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(colors: [tint.opacity(0.78), tint],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+                    .frame(width: max(4, width * CGFloat(clamped)))
+                    .animation(.smooth(duration: 0.45), value: clamped)
+            }
+        }
+        .frame(width: 56, height: 5)
+    }
 }

@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    # 液态玻璃需要 macOS 26+ 的 SDK 才能编译（部署目标仍是 macOS 15）
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4

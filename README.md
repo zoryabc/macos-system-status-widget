@@ -7,8 +7,17 @@
 A real-time macOS desktop widget that shows CPU, memory, disk, battery, and network stats on your desktop, refreshed every second.
 
 ![macOS](https://img.shields.io/badge/macOS-15%2B-333333?logo=apple&logoColor=white)
+![Liquid Glass](https://img.shields.io/badge/Liquid%20Glass-macOS%2026%2B-0A84FF)
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+## Liquid Glass
+
+The card uses **Liquid Glass**, introduced in macOS 26: your wallpaper is genuinely refracted and diffused through it, then finished with the tighter macOS 27 edge treatment — a brighter specular rim, a darkened edge, and tint strength that follows the system appearance.
+
+- On macOS 26 and later the real `glassEffect` is used; older systems fall back to a frosted material with identical layout and data.
+- Glass tint is tuned per appearance so text stays legible over busy wallpapers.
+- The card keeps its original 300 × 286 size — content and layout are unchanged from the previous release.
 
 ## Download
 
@@ -25,16 +34,17 @@ Prebuilt releases are available on the [Releases](https://github.com/zoryabc/mac
 - Load averages (1/5/15 minutes) and system uptime
 - Battery remaining time estimate and charge/discharge power (discharge/charge state auto-detected)
 - Real-time network throughput (up/down), network name, and local IP
-- Dark / Light appearance presets, one-click switch from the menu bar, selection remembered
+- Liquid Glass card that follows the system appearance, or lock it to dark / light glass; selection remembered
+- Capsule meters with smooth value transitions (no longer the stock progress bar)
 - "Launch at Login" toggle, starts automatically at login
 - Click-through, so it never blocks desktop interaction; position remembered automatically
 - Fully local app, no network requests, all data comes from your machine
 
 ## Requirements
 
-- macOS 15.0 or later
+- macOS 15.0 or later (Liquid Glass on macOS 26 and later; older systems fall back to a frosted material)
 - Apple Silicon (M-series) or Intel Mac
-- Building requires Xcode or Command Line Tools (`xcode-select --install`)
+- Building requires Xcode 26 or later (the Liquid Glass SDK; the app still runs on macOS 15)
 
 ## Quick Start
 
@@ -57,7 +67,7 @@ Or install it directly into your personal Applications folder and enable launch 
 2. Click the dashboard icon in the menu bar:
    - **Move (edit mode)**: the card floats and shows a hint; press and drag to reposition, click again to lock.
    - **Always on Top**: keep the card above all windows.
-   - **Appearance presets**: switch between dark / light themes; the selection is remembered.
+   - **Appearance presets**: follow the system, or lock to dark / light glass; the selection is remembered.
    - **Launch at Login**: when checked, starts automatically at login; uncheck to unregister.
    - **Quit**: exit the widget.
 3. While locked, the card is click-through, so it doesn't interfere with desktop interaction; its position is remembered automatically.
@@ -115,7 +125,8 @@ Build output:
 - **How to disable launch at login**: uncheck "Launch at Login" in the menu bar, or delete
   `~/Library/LaunchAgents/local.systemwidget.plist`.
 - **Want to adjust opacity or appearance**: switch presets in the menu bar;
-  to change specific values, edit `Sources/AppEntry.swift` and rebuild.
+  to change the glass tint, edit `WidgetPalette.glassTint` in `Sources/AppEntry.swift`;
+  for the card radius, edit `WidgetMetrics.cardRadius`.
 
 ## License
 
