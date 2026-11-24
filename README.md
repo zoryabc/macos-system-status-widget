@@ -11,6 +11,11 @@ A real-time macOS desktop widget that shows CPU, memory, disk, battery, and netw
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+<p align="center">
+  <img src="docs/preview/liquid-glass-light.png" width="300" alt="Liquid Glass, light">
+  <img src="docs/preview/liquid-glass-dark.png" width="300" alt="Liquid Glass, dark">
+</p>
+
 ## Liquid Glass
 
 The card uses **Liquid Glass**, introduced in macOS 26: your wallpaper is genuinely refracted and diffused through it, then finished with the tighter macOS 27 edge treatment — a brighter specular rim, a darkened edge, and tint strength that follows the system appearance.

@@ -11,6 +11,11 @@
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+<p align="center">
+  <img src="docs/preview/liquid-glass-light.png" width="300" alt="液态玻璃 · 浅色">
+  <img src="docs/preview/liquid-glass-dark.png" width="300" alt="液态玻璃 · 深色">
+</p>
+
 ## 液态玻璃外观
 
 卡片采用 macOS 26 起的 **Liquid Glass** 材质：桌面壁纸会透过卡片被真实折射、扩散，再叠上 macOS 27 收紧的边缘处理——更亮的镜面高光、更暗的收边描边，以及随系统深浅色切换的染色强度。
