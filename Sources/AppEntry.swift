@@ -182,6 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             state.alwaysOnTop = true
         }
         state.onThemeChange = { [weak self] theme in
+            // 面板与菜单一起跟随，避免卡片变深色而状态栏菜单仍是浅色
+            NSApp.appearance = theme.appearance
             self?.panel?.appearance = theme.appearance
         }
         setupStatusItem()
