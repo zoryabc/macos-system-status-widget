@@ -22,7 +22,12 @@ The card uses **Liquid Glass**, introduced in macOS 26: your wallpaper is genuin
 
 - On macOS 26 and later the real `glassEffect` is used; older systems fall back to a frosted material with identical layout and data.
 - Glass tint is tuned per appearance so text stays legible over busy wallpapers.
+- A **Glass transparency** slider lives in the menu bar: 0% is nearly solid glass, 100% is almost untinted clear glass, and the card updates live while you drag (no need to dismiss the menu). The value is remembered.
 - The card keeps its original 300 × 286 size — content and layout are unchanged from the previous release.
+
+<p align="center">
+  <img src="docs/preview/transparency-menu.png" width="300" alt="Glass transparency slider in the menu bar">
+</p>
 
 ## Download
 
@@ -40,6 +45,7 @@ Prebuilt releases are available on the [Releases](https://github.com/zoryabc/mac
 - Battery remaining time estimate and charge/discharge power (discharge/charge state auto-detected)
 - Real-time network throughput (up/down), network name, and local IP
 - Liquid Glass card that follows the system appearance, or lock it to dark / light glass; selection remembered
+- Glass transparency slider, stepless 0–100%, live preview, remembered across launches
 - Capsule meters with smooth value transitions (no longer the stock progress bar)
 - "Launch at Login" toggle, starts automatically at login
 - Click-through, so it never blocks desktop interaction; position remembered automatically
@@ -73,6 +79,7 @@ Or install it directly into your personal Applications folder and enable launch 
    - **Move (edit mode)**: the card floats and shows a hint; press and drag to reposition, click again to lock.
    - **Always on Top**: keep the card above all windows.
    - **Appearance presets**: follow the system, or lock to dark / light glass; the selection is remembered.
+   - **Glass transparency**: drag the slider — 0% most solid, 100% most transparent; the card follows live and the value is saved.
    - **Launch at Login**: when checked, starts automatically at login; uncheck to unregister.
    - **Quit**: exit the widget.
 3. While locked, the card is click-through, so it doesn't interfere with desktop interaction; its position is remembered automatically.
@@ -129,8 +136,8 @@ Build output:
 - **How to update after rebuilding**: run `./install.sh`; it replaces the app and restarts it automatically.
 - **How to disable launch at login**: uncheck "Launch at Login" in the menu bar, or delete
   `~/Library/LaunchAgents/local.systemwidget.plist`.
-- **Want to adjust opacity or appearance**: switch presets in the menu bar;
-  to change the glass tint, edit `WidgetPalette.glassTint` in `Sources/AppEntry.swift`;
+- **Want to adjust opacity or appearance**: switch presets and drag the transparency slider in the menu bar;
+  the tint range at either end is set by `WidgetPalette.glassTint` / `glassScrim` in `Sources/AppEntry.swift`;
   for the card radius, edit `WidgetMetrics.cardRadius`.
 
 ## License

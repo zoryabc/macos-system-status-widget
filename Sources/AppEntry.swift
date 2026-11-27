@@ -51,14 +51,14 @@ enum WidgetTheme: String, CaseIterable {
         }
     }
 
-    func palette(for scheme: ColorScheme) -> WidgetPalette {
+    func palette(for scheme: ColorScheme, transparency: Double) -> WidgetPalette {
         let isDark: Bool
         switch self {
         case .auto: isDark = (scheme == .dark)
         case .dark: isDark = true
         case .light: isDark = false
         }
-        return WidgetPalette(isDark: isDark)
+        return WidgetPalette(isDark: isDark, transparency: transparency)
     }
 }
 
@@ -67,10 +67,33 @@ enum WidgetTheme: String, CaseIterable {
 struct WidgetPalette {
     let isDark: Bool
 
+    /// 用户设定的玻璃透明度：0 = 最实（染色最重），1 = 最透（染色最淡）。
+    /// 滑块的连续值直接换算成染色强度，所以拖动能实时看到壁纸透上来。
+    var transparency: Double = WidgetPalette.defaultTransparency
+
+    /// 默认透明度，对应升级前那档「能看见玻璃、文字又读得清」的染色
+    static let defaultTransparency: Double = 0.40
+
     /// 玻璃染色。macOS 27 的液态玻璃可从未着色到完全染色，
-    /// 桌面小组件需要一定染色才能在复杂壁纸前保持可读性。
+    /// 这里把透明度滑块映射到染色强度之间的一段区间：
+    /// 0% 接近实心（最深染色），100% 完全不染色（纯系统玻璃，壁纸透得最明显）。
+    /// 默认 40% 正好落在升级前那档观感上。
     var glassTint: Color {
-        isDark ? Color.black.opacity(0.55) : Color.white.opacity(0.46)
+        let t = min(1, max(0, transparency))
+        let solid = isDark ? 0.92 : 0.77
+        let opacity = solid * (1 - t)
+        return isDark ? Color.black.opacity(opacity) : Color.white.opacity(opacity)
+    }
+
+    /// 偏「实」一侧额外补的一层薄雾。
+    /// 系统染色的调节幅度有限，光靠 tint 做不到接近实心，
+    /// 这里在低于默认档时叠一层柔光，让 0% 那端真的是厚玻璃。
+    var glassScrim: Color {
+        let t = min(1, max(0, transparency))
+        let base = WidgetPalette.defaultTransparency
+        guard t < base else { return .clear }
+        let strength = (base - t) / base * (isDark ? 0.56 : 0.60)
+        return isDark ? Color.black.opacity(strength) : Color.white.opacity(strength)
     }
 
     var primaryText: Color {
@@ -116,11 +139,24 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 玻璃透明度：0 = 最实，1 = 最透
+    @Published var transparency: Double {
+        didSet {
+            let clamped = min(1, max(0, transparency))
+            if clamped != transparency {
+                transparency = clamped
+                return
+            }
+            UserDefaults.standard.set(transparency, forKey: "SystemWidgetGlassTransparency")
+        }
+    }
+
     /// 主题变化时同步窗口外观（玻璃材质跟着系统深浅色走）
     var onThemeChange: ((WidgetTheme) -> Void)?
 
     init() {
-        let saved = UserDefaults.standard.string(forKey: "SystemWidgetTheme") ?? ""
+        let defaults = UserDefaults.standard
+        let saved = defaults.string(forKey: "SystemWidgetTheme") ?? ""
         switch saved {
         case "white":
             // 兼容更早版本的 纯白 设置
@@ -129,6 +165,13 @@ final class AppState: ObservableObject {
             theme = WidgetTheme(rawValue: saved) ?? .auto
         default:
             theme = .auto
+        }
+
+        // 老版本没有这个键，用默认值（等价于升级前的观感）
+        if let savedTransparency = defaults.object(forKey: "SystemWidgetGlassTransparency") as? Double {
+            transparency = min(1, max(0, savedTransparency))
+        } else {
+            transparency = WidgetPalette.defaultTransparency
         }
     }
 }
@@ -188,6 +231,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         setupStatusItem()
         setupPanel()
+
+        // 调试用：启动后自动展开菜单，便于截图检查滑块布局
+        if CommandLine.arguments.contains("--open-menu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let item = self?.statusItem,
+                      let menu = item.menu,
+                      let button = item.button else { return }
+                let anchor = NSPoint(x: 0, y: -2)
+                menu.popUp(positioning: nil, at: anchor, in: button)
+            }
+        }
     }
 
     // MARK: 菜单栏
@@ -246,15 +300,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         launchItem.target = self
         launchItem.state = FileManager.default.fileExists(atPath: launchAgentURL.path) ? .on : .off
 
+        // 透明度滑块：菜单里放一个自定义视图，拖动时实时改玻璃染色
+        let opacityView = TransparencySliderView(transparency: state.transparency) { [weak self] value in
+            self?.state.transparency = value
+        }
+        opacityView.frame = NSRect(origin: .zero, size: TransparencySliderView.preferredSize)
+        let opacityItem = NSMenuItem()
+        opacityItem.view = opacityView
+
         menu.addItem(editItem)
         menu.addItem(topItem)
         menu.addItem(.separator())
         menu.addItem(themeItem)
+        menu.addItem(opacityItem)
         menu.addItem(launchItem)
         menu.addItem(.separator())
         menu.addItem(quitItem)
 
         item.menu = menu
+        // 菜单按最长标题自适应宽度，这里给个下限，保证滑块不会被压得太窄
+        menu.minimumWidth = 216
         statusItem = item
 
         // 开机自启等场景下，启动瞬间系统菜单栏可能尚未就绪，按钮可能为 nil。
@@ -499,6 +564,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
+// MARK: - 菜单里的透明度滑块
+
+/// 菜单项自定义视图：一行标题 + 实时百分比 + 滑块。
+/// 拖动时连续回调，卡片立刻换染色强度，不用关菜单就能看到效果。
+/// 子视图用 Auto Layout 约束，菜单按内容缩放宽度时不会把滑块挤出去。
+final class TransparencySliderView: NSView {
+    static let preferredSize = NSSize(width: 200, height: 48)
+
+    private let titleLabel = NSTextField(labelWithString: "玻璃透明度")
+    private let valueLabel = NSTextField(labelWithString: "")
+    private let slider = NSSlider()
+    private let onChange: (Double) -> Void
+
+    init(transparency: Double, onChange: @escaping (Double) -> Void) {
+        self.onChange = onChange
+        super.init(frame: NSRect(origin: .zero, size: Self.preferredSize))
+        build(transparency: transparency)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func build(transparency: Double) {
+        titleLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        titleLabel.textColor = .labelColor
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        valueLabel.textColor = .secondaryLabelColor
+        valueLabel.alignment = .right
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        slider.minValue = 0
+        slider.maxValue = 100
+        slider.doubleValue = min(100, max(0, transparency * 100))
+        slider.controlSize = .small
+        slider.isContinuous = true
+        slider.target = self
+        slider.action = #selector(sliderChanged(_:))
+        slider.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(titleLabel)
+        addSubview(valueLabel)
+        addSubview(slider)
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 30),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            valueLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor,
+                                                constant: 8),
+
+            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 28),
+            slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            slider.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            slider.heightAnchor.constraint(equalToConstant: 16),
+        ])
+
+        updateValueLabel()
+    }
+
+    private func updateValueLabel() {
+        valueLabel.stringValue = "\(Int(slider.doubleValue.rounded()))%"
+    }
+
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        updateValueLabel()
+        onChange(sender.doubleValue / 100)
+    }
+}
+
 // MARK: - 界面
 
 struct ContentView: View {
@@ -507,7 +647,9 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var stats: SystemStats { model.stats }
-    private var palette: WidgetPalette { state.theme.palette(for: colorScheme) }
+    private var palette: WidgetPalette {
+        state.theme.palette(for: colorScheme, transparency: state.transparency)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -831,11 +973,13 @@ struct WidgetCardBackground: View {
             // 真正的液态玻璃：由系统负责背景折射、染色与无障碍适配
             Color.clear
                 .glassEffect(.regular.tint(palette.glassTint), in: shape)
+                .overlay { shape.fill(palette.glassScrim) }
         } else {
             // macOS 26 以下：退回毛玻璃材质，视觉尽量接近
             shape
                 .fill(.ultraThinMaterial)
                 .overlay { shape.fill(palette.glassTint) }
+                .overlay { shape.fill(palette.glassScrim) }
         }
     }
 
