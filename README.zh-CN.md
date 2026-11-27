@@ -14,16 +14,15 @@
 <p align="center">
   <img src="docs/preview/liquid-glass-light.png" width="300" alt="液态玻璃 · 浅色">
   <img src="docs/preview/liquid-glass-dark.png" width="300" alt="液态玻璃 · 深色">
+  <br><sub>v2.1.0 界面截图</sub>
 </p>
 
 ## 液态玻璃外观
 
-卡片采用 macOS 26 起的 **Liquid Glass** 材质：桌面壁纸会透过卡片被真实折射、扩散，再叠上 macOS 27 收紧的边缘处理——更亮的镜面高光、更暗的收边描边，以及随系统深浅色切换的染色强度。
+macOS 26 及以上使用 AppKit 原生 `NSGlassEffectView` 绘制卡片。玻璃会随窗口后方的画面变化，包括桌面壁纸和置顶时下方的应用。实际观感也随 macOS 的液态玻璃和辅助功能设置变化。macOS 15 使用磨砂材质。
 
-- 系统为 macOS 26 及以上时，走真正的 `glassEffect` 玻璃；更早的系统自动退回毛玻璃材质，界面与数据完全一致。
-- 玻璃材质的染色强度按深浅色分别调过，保证在花哨壁纸前文字依然清楚。
-- 菜单栏里有一条**玻璃透明度**滑块：0% 接近实心厚玻璃，100% 是几乎不着色的清玻璃，拖动时卡片实时跟随（不需要关掉菜单）。设定会自动记忆。
-- 卡片本身尺寸保持不变（300 × 286），内容与布局与升级前完全一致。
+- 菜单栏的**玻璃透明度**滑块实时调整染色，0% 接近实心，100% 使用无额外染色的系统玻璃。设置会自动保存。
+- 在**外观预设**中可跟随系统，或选择深色、浅色玻璃。
 
 <p align="center">
   <img src="docs/preview/transparency-menu.png" width="300" alt="菜单里的玻璃透明度滑块">
@@ -55,7 +54,7 @@
 ## 环境要求
 
 - macOS 15.0 或更高版本（macOS 26 起启用液态玻璃，更早系统自动退回毛玻璃）
-- Apple Silicon（M 系列）或 Intel Mac
+- 支持 Apple Silicon（M 系列）和 Intel Mac，发布包同时包含两种架构
 - 构建需要 Xcode 26 或更高版本（用到 Liquid Glass 的 SDK；运行时仍兼容 macOS 15）
 
 ## 快速开始
@@ -77,7 +76,7 @@ open build/SystemWidget.app
 
 1. 启动后，小组件默认出现在桌面右上角。
 2. 点击菜单栏的仪表盘图标：
-   - **移动位置（编辑模式）**：卡片浮动并显示提示，按住拖动调整位置，再点一次恢复锁定。
+   - **移动位置（编辑模式）**：按住卡片任意位置即可拖动，支持跨屏。再次选择该菜单项恢复锁定。
    - **始终置顶**：让卡片浮在所有窗口之上。
    - **外观预设**：跟随系统 / 深色玻璃 / 浅色玻璃，选择自动记忆。
    - **玻璃透明度**：拖动滑块即可，0% 最实、100% 最透，边拖边看效果，松手后自动保存。
@@ -111,8 +110,9 @@ open build/SystemWidget.app
 ```text
 .
 ├── Sources/
-│   ├── AppEntry.swift   # 界面、桌面窗口、菜单栏控制
-│   ├── Stats.swift      # CPU / 内存 / 存储 / 电池数据采集
+│   ├── AppEntry.swift   # SwiftUI 仪表、菜单栏和应用状态
+│   ├── WidgetPanel.swift # AppKit 窗口、原生玻璃、拖动和位置恢复
+│   ├── Stats.swift      # 后台系统指标采集
 │   └── main.swift       # 命令行验证工具入口
 ├── Info.plist
 ├── build.sh             # 构建脚本
@@ -138,8 +138,8 @@ open build/SystemWidget.app
 - **如何关闭开机自启**：菜单栏取消「开机自启」，或删除
   `~/Library/LaunchAgents/local.systemwidget.plist`。
 - **想调整透明度或外观**：外观在菜单栏「外观预设」中切换，透明度直接用
-  「玻璃透明度」滑块；两端的染色范围在 `Sources/AppEntry.swift` 的
-  `WidgetPalette.glassTint` / `glassScrim` 调整，卡片圆角在 `WidgetMetrics.cardRadius` 调整。
+  「玻璃透明度」滑块；两端的染色范围在 `Sources/WidgetPanel.swift` 的
+  `WidgetSurface.updateTint()` 调整，卡片圆角在 `WidgetMetrics.cardRadius` 调整。
 
 ## 许可证
 

@@ -14,16 +14,15 @@ A real-time macOS desktop widget that shows CPU, memory, disk, battery, and netw
 <p align="center">
   <img src="docs/preview/liquid-glass-light.png" width="300" alt="Liquid Glass, light">
   <img src="docs/preview/liquid-glass-dark.png" width="300" alt="Liquid Glass, dark">
+  <br><sub>v2.1.0 screenshots</sub>
 </p>
 
 ## Liquid Glass
 
-The card uses **Liquid Glass**, introduced in macOS 26: your wallpaper is genuinely refracted and diffused through it, then finished with the tighter macOS 27 edge treatment — a brighter specular rim, a darkened edge, and tint strength that follows the system appearance.
+On macOS 26 and later, AppKit renders the card using its native `NSGlassEffectView`. The glass samples what is behind the window, including the wallpaper or apps underneath when the widget is floating. Its appearance also follows macOS Liquid Glass and accessibility settings. macOS 15 uses a frosted backdrop.
 
-- On macOS 26 and later the real `glassEffect` is used; older systems fall back to a frosted material with identical layout and data.
-- Glass tint is tuned per appearance so text stays legible over busy wallpapers.
-- A **Glass transparency** slider lives in the menu bar: 0% is nearly solid glass, 100% is almost untinted clear glass, and the card updates live while you drag (no need to dismiss the menu). The value is remembered.
-- The card keeps its original 300 × 286 size — content and layout are unchanged from the previous release.
+- Use **Glass transparency** in the menu bar to adjust tint live. At 0%, the card is nearly solid. At 100%, it uses the system glass without additional tint. The value is saved.
+- Use **Appearance presets** to follow the system or select dark or light glass.
 
 <p align="center">
   <img src="docs/preview/transparency-menu.png" width="300" alt="Glass transparency slider in the menu bar">
@@ -54,7 +53,7 @@ Prebuilt releases are available on the [Releases](https://github.com/zoryabc/mac
 ## Requirements
 
 - macOS 15.0 or later (Liquid Glass on macOS 26 and later; older systems fall back to a frosted material)
-- Apple Silicon (M-series) or Intel Mac
+- Apple Silicon (M-series) or Intel Mac. Release builds include both architectures.
 - Building requires Xcode 26 or later (the Liquid Glass SDK; the app still runs on macOS 15)
 
 ## Quick Start
@@ -76,7 +75,7 @@ Or install it directly into your personal Applications folder and enable launch 
 
 1. After launch, the widget appears in the top-right corner of the desktop by default.
 2. Click the dashboard icon in the menu bar:
-   - **Move (edit mode)**: the card floats and shows a hint; press and drag to reposition, click again to lock.
+   - **Move (edit mode)**: drag anywhere on the card, including across displays. Select the menu item again to lock it.
    - **Always on Top**: keep the card above all windows.
    - **Appearance presets**: follow the system, or lock to dark / light glass; the selection is remembered.
    - **Glass transparency**: drag the slider — 0% most solid, 100% most transparent; the card follows live and the value is saved.
@@ -110,8 +109,9 @@ Build output:
 ```text
 .
 ├── Sources/
-│   ├── AppEntry.swift   # UI, desktop window, menu bar controls
-│   ├── Stats.swift      # CPU / memory / disk / battery data collection
+│   ├── AppEntry.swift   # SwiftUI gauges, menu bar, application state
+│   ├── WidgetPanel.swift # AppKit window, native glass, dragging, and position restoration
+│   ├── Stats.swift      # Background system metrics sampler
 │   └── main.swift       # CLI verification tool entry point
 ├── Info.plist
 ├── build.sh             # Build script
@@ -137,7 +137,7 @@ Build output:
 - **How to disable launch at login**: uncheck "Launch at Login" in the menu bar, or delete
   `~/Library/LaunchAgents/local.systemwidget.plist`.
 - **Want to adjust opacity or appearance**: switch presets and drag the transparency slider in the menu bar;
-  the tint range at either end is set by `WidgetPalette.glassTint` / `glassScrim` in `Sources/AppEntry.swift`;
+  the tint range at either end is set by `WidgetSurface.updateTint()` in `Sources/WidgetPanel.swift`;
   for the card radius, edit `WidgetMetrics.cardRadius`.
 
 ## License
