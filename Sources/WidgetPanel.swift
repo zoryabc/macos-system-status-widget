@@ -11,14 +11,26 @@ enum WidgetMetrics {
                                    height: cardSize.height + 2 * shadowInset)
 }
 
+enum WidgetGlassMaterial: String, CaseIterable {
+    case translucent
+    case standard
+
+    var displayName: String {
+        switch self {
+        case .translucent: return "通透玻璃"
+        case .standard: return "标准玻璃"
+        }
+    }
+}
+
 final class WidgetPanel: NSPanel {
     private static let frameKey = "SystemWidgetPanelFrameV2"
     private static let legacyFrameKey = "SystemWidgetPanelFrame"
     private let surface: WidgetSurface
     private var hasStartedDrag = false
 
-    init(content: ContentView, transparency: Double) {
-        surface = WidgetSurface(content: content, transparency: transparency)
+    init(content: ContentView, material: WidgetGlassMaterial, transparency: Double) {
+        surface = WidgetSurface(content: content, glassMaterial: material, transparency: transparency)
         super.init(contentRect: NSRect(origin: .zero, size: WidgetMetrics.windowSize),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
@@ -42,6 +54,10 @@ final class WidgetPanel: NSPanel {
         if isEditing || alwaysOnTop {
             orderFrontRegardless()
         }
+    }
+
+    func setGlassMaterial(_ material: WidgetGlassMaterial) {
+        surface.glassMaterial = material
     }
 
     func setTransparency(_ value: Double) {
@@ -121,6 +137,7 @@ private final class WidgetDragView: NSView {
 
 private final class WidgetSurface: NSView {
     private let material: NSView
+    private let hosting: NSHostingView<ContentView>
     private let fallbackTint: NSView?
     private let dragView = WidgetDragView()
 
@@ -129,14 +146,19 @@ private final class WidgetSurface: NSView {
         set { dragView.isHidden = !newValue }
     }
 
-    var transparency: Double {
-        didSet { updateTint() }
+    var glassMaterial: WidgetGlassMaterial {
+        didSet { updateMaterial() }
     }
 
-    init(content: ContentView, transparency: Double) {
+    var transparency: Double {
+        didSet { updateMaterial() }
+    }
+
+    init(content: ContentView, glassMaterial: WidgetGlassMaterial, transparency: Double) {
+        self.glassMaterial = glassMaterial
         self.transparency = transparency
         let size = WidgetMetrics.cardSize
-        let hosting = NSHostingView(rootView: content)
+        hosting = NSHostingView(rootView: content)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.autoresizingMask = [.width, .height]
 
@@ -145,7 +167,6 @@ private final class WidgetSurface: NSView {
             // 实测 regular 在这种大面积跨窗口背景上保留了更多折射细节。
             glass.style = .regular
             glass.cornerRadius = WidgetMetrics.cardRadius
-            glass.contentView = hosting
             material = glass
             fallbackTint = nil
         } else {
@@ -174,22 +195,49 @@ private final class WidgetSurface: NSView {
         dragView.frame = card
         dragView.isHidden = true
         addSubview(dragView)
-        updateTint()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(accessibilityDisplayOptionsChanged(_:)),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil
+        )
+        updateMaterial()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        updateTint()
+        updateMaterial()
     }
 
-    private func updateTint() {
+    @objc private func accessibilityDisplayOptionsChanged(_ notification: Notification) {
+        updateMaterial()
+    }
+
+    private func updateMaterial() {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let base = dark ? NSColor.black : .white
         // 默认档轻染色，滑块两端覆盖低透光至无染色。
         let strength = pow(1 - transparency, 3.3)
         if #available(macOS 26.0, *), let glass = material as? NSGlassEffectView {
+            let blendsWithBackdrop = glassMaterial == .translucent
+                && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+
+            if blendsWithBackdrop {
+                if hosting.superview !== self {
+                    glass.contentView = NSView(frame: glass.bounds)
+                    hosting.frame = glass.frame
+                    addSubview(hosting, positioned: .above, relativeTo: glass)
+                }
+                // 混合的是玻璃层，前景数据保持原来的不透明度。
+                glass.alphaValue = 1 - 0.55 * transparency
+            } else {
+                if glass.contentView !== hosting {
+                    hosting.removeFromSuperview()
+                    hosting.frame = glass.bounds
+                    glass.contentView = hosting
+                }
+                glass.alphaValue = 1
+            }
             glass.tintColor = strength > 0 ? base.withAlphaComponent(strength) : nil
         } else {
             fallbackTint?.layer?.backgroundColor = base.withAlphaComponent(strength).cgColor

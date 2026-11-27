@@ -47,13 +47,15 @@ enum WidgetTheme: String, CaseIterable {
 
 struct WidgetPalette {
     let isDark: Bool
+    var enhancesContrast = false
 
     var primaryText: Color {
         isDark ? Color.white.opacity(0.97) : Color.black.opacity(0.90)
     }
 
     var secondaryText: Color {
-        isDark ? Color.white.opacity(0.66) : Color.black.opacity(0.56)
+        isDark ? Color.white.opacity(enhancesContrast ? 0.86 : 0.66)
+               : Color.black.opacity(enhancesContrast ? 0.78 : 0.56)
     }
 
     /// 进度条底槽
@@ -73,12 +75,21 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var glassMaterial: WidgetGlassMaterial {
+        didSet {
+            UserDefaults.standard.set(glassMaterial.rawValue, forKey: Self.materialKey)
+            onGlassMaterialChange?(glassMaterial)
+        }
+    }
+
+    private static let materialKey = "SystemWidgetGlassMaterial"
     private static let transparencyKey = "SystemWidgetGlassTransparency"
     static let defaultTransparency = 0.40
 
     private(set) var transparency: Double
 
     var onThemeChange: ((WidgetTheme) -> Void)?
+    var onGlassMaterialChange: ((WidgetGlassMaterial) -> Void)?
     var onTransparencyChange: ((Double) -> Void)?
 
     func setTransparency(_ value: Double) {
@@ -100,6 +111,9 @@ final class AppState: ObservableObject {
         default:
             theme = .auto
         }
+
+        glassMaterial = defaults.string(forKey: Self.materialKey)
+            .flatMap(WidgetGlassMaterial.init(rawValue:)) ?? .translucent
 
         let savedTransparency = (defaults.object(forKey: Self.transparencyKey)
             ?? defaults.object(forKey: "SystemWidgetGlassTransparencyV2")) as? Double
@@ -179,6 +193,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.appearance = theme.appearance
             self?.panel?.appearance = theme.appearance
         }
+        state.onGlassMaterialChange = { [weak self] material in
+            self?.panel?.setGlassMaterial(material)
+        }
         state.onTransparencyChange = { [weak self] value in
             self?.panel?.setTransparency(value)
         }
@@ -253,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         launchItem.target = self
         launchItem.state = FileManager.default.fileExists(atPath: launchAgentURL.path) ? .on : .off
 
-        // 透明度滑块：菜单里放一个自定义视图，拖动时实时改玻璃染色
+        // 透明度滑块实时调整玻璃外观。
         let opacityView = TransparencySliderView(transparency: state.transparency) { [weak self] value in
             self?.state.setTransparency(value)
         }
@@ -265,6 +282,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(topItem)
         menu.addItem(.separator())
         menu.addItem(themeItem)
+        if #available(macOS 26.0, *) {
+            let materialItem = NSMenuItem(title: "玻璃材质", action: nil, keyEquivalent: "")
+            let materialMenu = NSMenu()
+            for material in WidgetGlassMaterial.allCases {
+                let choice = NSMenuItem(title: material.displayName,
+                                        action: #selector(selectGlassMaterial(_:)),
+                                        keyEquivalent: "")
+                choice.target = self
+                choice.representedObject = material.rawValue
+                choice.state = state.glassMaterial == material ? .on : .off
+                materialMenu.addItem(choice)
+            }
+            materialItem.submenu = materialMenu
+            menu.addItem(materialItem)
+        }
         menu.addItem(opacityItem)
         menu.addItem(launchItem)
         menu.addItem(.separator())
@@ -329,7 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupPanel() {
         let widget = WidgetPanel(content: ContentView(model: model, state: state),
-                                 transparency: state.transparency)
+                                 material: state.glassMaterial, transparency: state.transparency)
         widget.appearance = state.theme.appearance
         widget.delegate = self
         panel = widget
@@ -370,6 +402,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             for item in submenu.items {
                 item.state = (item.representedObject as? String) == raw ? .on : .off
             }
+        }
+    }
+
+    @objc private func selectGlassMaterial(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let material = WidgetGlassMaterial(rawValue: value) else { return }
+        state.glassMaterial = material
+        for item in sender.menu?.items ?? [] {
+            item.state = item === sender ? .on : .off
         }
     }
 
@@ -448,7 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 // MARK: - 菜单里的透明度滑块
 
 /// 菜单项自定义视图：一行标题 + 实时百分比 + 滑块。
-/// 拖动时连续回调，卡片立刻换染色强度，不用关菜单就能看到效果。
+/// 拖动时连续回调，卡片即时更新。
 /// 子视图用 Auto Layout 约束，菜单按内容缩放宽度时不会把滑块挤出去。
 final class TransparencySliderView: NSView {
     static let preferredSize = NSSize(width: 200, height: 48)
@@ -526,10 +567,15 @@ struct ContentView: View {
     @ObservedObject var model: SystemStatsModel
     @ObservedObject var state: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var stats: SystemStats { model.snapshot.stats }
     private var palette: WidgetPalette {
-        state.theme.palette(for: colorScheme)
+        var palette = state.theme.palette(for: colorScheme)
+        if #available(macOS 26.0, *) {
+            palette.enhancesContrast = state.glassMaterial == .translucent && !reduceTransparency
+        }
+        return palette
     }
 
     var body: some View {
@@ -558,6 +604,8 @@ struct ContentView: View {
         }
         .padding(14)
         .frame(width: WidgetMetrics.cardSize.width, height: WidgetMetrics.cardSize.height)
+        .shadow(color: palette.enhancesContrast ? (palette.isDark ? Color.black : Color.white).opacity(0.88) : .clear,
+                radius: 1.4)
         .overlay {
             if state.editMode {
                 RoundedRectangle(cornerRadius: WidgetMetrics.cardRadius)

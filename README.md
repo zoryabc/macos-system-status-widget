@@ -21,7 +21,8 @@ A real-time macOS desktop widget that shows CPU, memory, disk, battery, and netw
 
 On macOS 26 and later, AppKit renders the card using its native `NSGlassEffectView`. The glass samples what is behind the window, including the wallpaper or apps underneath when the widget is floating. Its appearance also follows macOS Liquid Glass and accessibility settings. macOS 15 uses a frosted backdrop.
 
-- Use **Glass transparency** in the menu bar to adjust tint live. At 0%, the card is nearly solid. At 100%, it uses the system glass without additional tint. The value is saved.
+- Choose **Translucent Glass** (default) or **Standard Glass** under **Glass material**. Translucent Glass blends the native effect with the visible backdrop to preserve more wallpaper detail, while keeping the widget text fully rendered. Standard Glass uses the full system effect. The material choice is saved.
+- Use **Glass transparency** to adjust the effect live. In Translucent Glass, the slider adjusts the backdrop blend and tint. In Standard Glass, it adjusts tint. The value is saved.
 - Use **Appearance presets** to follow the system or select dark or light glass.
 
 <p align="center">
@@ -78,6 +79,7 @@ Or install it directly into your personal Applications folder and enable launch 
    - **Move (edit mode)**: drag anywhere on the card, including across displays. Select the menu item again to lock it.
    - **Always on Top**: keep the card above all windows.
    - **Appearance presets**: follow the system, or lock to dark / light glass; the selection is remembered.
+   - **Glass material**: switch between Translucent Glass and Standard Glass (macOS 26 or later).
    - **Glass transparency**: drag the slider — 0% most solid, 100% most transparent; the card follows live and the value is saved.
    - **Launch at Login**: when checked, starts automatically at login; uncheck to unregister.
    - **Quit**: exit the widget.
@@ -137,7 +139,7 @@ Build output:
 - **How to disable launch at login**: uncheck "Launch at Login" in the menu bar, or delete
   `~/Library/LaunchAgents/local.systemwidget.plist`.
 - **Want to adjust opacity or appearance**: switch presets and drag the transparency slider in the menu bar;
-  the tint range at either end is set by `WidgetSurface.updateTint()` in `Sources/WidgetPanel.swift`;
+  the tint range at either end is set by `WidgetSurface.updateMaterial()` in `Sources/WidgetPanel.swift`;
   for the card radius, edit `WidgetMetrics.cardRadius`.
 
 ## License
